@@ -1,0 +1,325 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum CreditTransactionType {
+  PURCHASE
+  REFUND
+  USAGE
+  GRANT
+}
+
+enum ExamType {
+  READING
+  LISTENING
+  WRITING
+  SPEAKING
+}
+
+enum ExamStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum ReadingQuestionType {
+  MCQ
+  TRUE_FALSE
+  HEADING
+  GAP_FILL
+}
+
+enum ListeningQuestionType {
+  MCQ
+  TRUE_FALSE
+  FILL_BLANKS
+  MAP_LABELING
+}
+
+enum WritingTaskType {
+  TASK_1
+  TASK_2
+}
+
+enum LessonLevel {
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+
+enum PostTag {
+  GENERAL
+  STUDY_ABROAD
+  EXAM_TIPS
+  WRITING
+  SPEAKING
+  VOCABULARY
+  GRAMMAR
+  COMMUNITY
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  credits      Int      @default(0)
+  role         Role     @default(USER)
+  name         String?
+  avatar       String?
+  levelEstimate String? // A1-C2 CEFR level estimate
+  isEmailVerified Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  creditTransactions CreditTransaction[]
+  examHistories ExamHistory[]
+  sessions Session[]
+  emailVerifications EmailVerification[][]
+  lessons Lesson[]
+  lessonBookmarks LessonBookmark[]
+  communityPosts CommunityPost[]
+  comments Comment[]
+  lessons             Lesson[]
+  lessonBookmarks     LessonBookmark[]
+  communityPosts      CommunityPost[]
+  comments            Comment[]
+}
+
+model CreditTransaction {
+  id                    String               @id @default(cuid())
+  userId                String
+  amount                Int
+  type                  CreditTransactionType
+  stripePaymentIntentId String?
+  reason                String?
+  createdAt             DateTime             @default(now())
+
+  user                  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ExamHistory {
+  id        String     @id @default(cuid())
+  userId    String
+  examType  ExamType
+  score     Float?
+  subScores Json?
+  status    ExamStatus @default(IN_PROGRESS)
+  jsonData  Json?
+  aiCost    Float?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  accessToken  String   @unique
+  refreshToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model EmailVerification {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  expiresAt  DateTime
+  verifiedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+}
+
+// Content Models for Exams
+
+model ReadingPassage {
+  id          String   @id @default(cuid())
+  title       String
+  text        String
+  level       String   // A1-C2 CEFR level
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions   ReadingQuestion[]
+
+  @@index([isPublished])
+}
+
+model ReadingQuestion {
+  id             String             @id @default(cuid())
+  passageId      String
+  type           ReadingQuestionType
+  questionText   String
+  options        Json?              // Array of options for MCQ
+  correctAnswer  Json               // The correct answer(s)
+  explanation    String?
+  isPublished    Boolean             @default(false)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  passage        ReadingPassage     @relation(fields: [passageId], references: [id], onDelete: Cascade)
+
+  @@index([passageId])
+  @@index([isPublished])
+}
+
+model ListeningAudio {
+  id          String   @id @default(cuid())
+  s3Key       String?  // S3 key or storage identifier
+  url         String?  // Direct URL if using external storage
+  transcript   String?
+  duration    Int?     // Duration in seconds
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions   ListeningQuestion[]
+
+  @@index([isPublished])
+}
+
+model ListeningQuestion {
+  id             String               @id @default(cuid())
+  audioId        String
+  type           ListeningQuestionType
+  timestamp      Int?                 // Start time in seconds
+  questionText   String
+  options        Json?                // Array of options
+  correctAnswer  Json                 // The correct answer(s)
+  explanation    String?
+  isPublished    Boolean               @default(false)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  audio          ListeningAudio       @relation(fields: [audioId], references: [id], onDelete: Cascade)
+
+  @@index([audioId])
+  @@index([isPublished])
+}
+
+model WritingPrompt {
+  id          String          @id @default(cuid())
+  taskType    WritingTaskType
+  topic       String
+  description String?
+  imageUrl    String?
+  timeLimit   Int             // Time limit in minutes
+  wordCount   Int?            // Suggested word count
+  isPublished Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([isPublished])
+}
+
+model SpeakingQuestion {
+  id                  String   @id @default(cuid())
+  part                Int      // 1, 2, or 3
+  cueCardText         String
+  prepTime            Int      // Preparation time in seconds
+  recordingTime        Int      // Recording time in seconds
+  followUpQuestions    Json?    // Array of follow-up questions
+  isPublished         Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([isPublished])
+}
+// Learning Hub Models
+
+model Lesson {
+  id          String   @id @default(cuid())
+  title       String
+  content      String
+  tags        Json?
+  level        LessonLevel
+  videoUrl     String?
+  isPublished  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isPublished, level])
+}
+
+model LessonBookmark {
+  id          String   @id @default(cuid())
+  userId      String
+  lessonId    String
+  createdAt    DateTime @default(now())
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+}
+
+// Community Models
+
+model CommunityPost {
+  id          String   @id @default(cuid())
+  userId      String
+  content     String
+  tags        Json?
+  likesCount  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments     Comment[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  postId      String
+  userId      String
+  content     String
+  createdAt    DateTime @default(now())
+
+  post         CommunityPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([userId])
+}
+
+  lessons Lesson[]
+  lessonBookmarks LessonBookmark[]
+  communityPosts CommunityPost[]
+  comments Comment[]
+
